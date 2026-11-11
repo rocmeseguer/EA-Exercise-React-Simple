@@ -4,7 +4,6 @@ export const initialUserState: UserState = {
   users: [],
   status: 'idle',
   error: null,
-  selectedUser: null,
 };
 
 /**
@@ -25,10 +24,6 @@ export const userReducer = (state: UserState, action: UserAction): UserState => 
       return { ...state, status: 'success', users: action.payload };
     case 'fetch_users_error':
       return { ...state, status: 'error', error: action.payload };
-    case 'select_user':
-      return { ...state, selectedUser: action.payload };
-    case 'clear_user':
-      return { ...state, selectedUser: null };
     default: {
       // Comprobación exhaustiva: si alguien añade una acción nueva a `UserAction`
       // y olvida tratarla aquí, TypeScript dará un error de compilación.

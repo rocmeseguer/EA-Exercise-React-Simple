@@ -4,7 +4,6 @@ import { RequestStatus } from '../models/api.model';
 import { User } from '../models/user.model';
 import { getErrorMessage } from '../services/http.service';
 import { getUsers } from '../services/user.service';
-import { UseUserSelectionResult, useUserSelection } from './useUserSelection';
 
 /**
  * Controller (Custom Hook) del listado de usuarios.
@@ -17,7 +16,7 @@ import { UseUserSelectionResult, useUserSelection } from './useUserSelection';
  * reducers ni de cómo se gestionan los errores.
  */
 
-export interface UseUsersResult extends UseUserSelectionResult {
+export interface UseUsersResult {
   users: readonly User[];
   status: RequestStatus;
   error: string | null;
@@ -26,8 +25,6 @@ export interface UseUsersResult extends UseUserSelectionResult {
 
 export const useUsers = (): UseUsersResult => {
   const { state, dispatch } = useUserContext();
-  // Composición de hooks: reutilizamos la lógica de selección.
-  const selection: UseUserSelectionResult = useUserSelection();
 
   // `useCallback` mantiene la misma referencia de función entre renders,
   // así puede usarse como dependencia de `useEffect` sin provocar bucles.
@@ -57,7 +54,6 @@ export const useUsers = (): UseUsersResult => {
   }, [state.status, loadUsers]);
 
   return {
-    ...selection,
     users: state.users,
     status: state.status,
     error: state.error,

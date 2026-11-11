@@ -1,16 +1,14 @@
-import { useState } from 'react';
+import { useCounter } from '../controllers/useCounter';
 
 /**
- * Página de inicio: ejemplo de ESTADO LOCAL con `useState`.
- * El contador solo le interesa a este componente, así que no tiene sentido
- * llevarlo al estado global. Al desmontar el componente, el estado se pierde.
+ * Página de inicio: ejemplo de ESTADO GLOBAL (Context + useReducer).
+ *
+ * `Home` se desmonta cada vez que navegamos a /users, pero el valor de `count`
+ * no vive en el componente sino en el `CounterProvider` (en la raíz de la app),
+ * así que al volver a Home el contador CONSERVA su valor.
  */
 export const Home = (): JSX.Element => {
-  const [count, setCount] = useState<number>(0);
-
-  // Actualización funcional: `prev => prev + 1` garantiza partir del valor más
-  // reciente aunque React agrupe (batch) varias actualizaciones seguidas.
-  const increment = (): void => setCount((prev: number): number => prev + 1);
+  const { count, increment } = useCounter();
 
   return (
     <div>

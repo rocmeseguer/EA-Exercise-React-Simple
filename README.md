@@ -27,9 +27,9 @@ La API debe exponer `GET /users` → `User[]` y `GET /users/:id` → `User`, con
 ```text
 src/
 ├── components/     # UI (presentacionales y contenedores *Page)
-├── context/        # UserContext (Provider) + user.reducer (función pura)
-├── controllers/    # Custom Hooks: useUsers, useUserDetail, useUserSelection
-├── models/         # Tipos: user.model, api.model, user-state.model
+├── context/        # CounterContext + counter.reducer, UserContext + user.reducer
+├── controllers/    # Custom Hooks: useCounter, useUsers, useUserDetail
+├── models/         # Tipos: user.model, api.model, user-state.model, counter-state.model
 ├── routes/         # AppRouter (mapa de rutas)
 └── services/       # http.service (fetch genérico) + user.service (endpoints)
 ```
@@ -38,15 +38,15 @@ src/
 
 | | Estado local (`useState`) | Estado global (Context + `useReducer`) |
 | --- | --- | --- |
-| Ejemplo | Contador de `Home.tsx`, carga del detalle en `useUserDetail.ts` | Lista de usuarios y usuario seleccionado (`UserContext.tsx`) |
-| Alcance | Un solo componente | Cualquier componente dentro de `<UserProvider>` |
+| Ejemplo | Usuario seleccionado en `UserListPage.tsx`, carga del detalle en `useUserDetail.ts` | Contador de `Home.tsx` (`CounterContext.tsx`), lista de usuarios (`UserContext.tsx`) |
+| Alcance | Un solo componente | Cualquier componente dentro del Provider |
+| Duración | Se reinicia al volver a la vista (el componente se vuelve a montar) | Se mantiene al navegar (el Provider está en la raíz) |
 | Flujo | Componente → `setState` → re-render | Componente → controller → `dispatch(acción)` → reducer → Context → re-render |
 
 ### Acciones del estado global
 
-- `fetch_users_start` / `fetch_users_success` / `fetch_users_error`: ciclo de vida de `GET /users`.
-- `select_user`: selecciona un usuario.
-- `clear_user`: limpia el usuario seleccionado.
+- Contador: `increment`.
+- Usuarios: `fetch_users_start` / `fetch_users_success` / `fetch_users_error` (ciclo de vida de `GET /users`).
 
 ## Scripts
 

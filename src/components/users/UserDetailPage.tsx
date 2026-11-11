@@ -1,6 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useUserDetail } from '../../controllers/useUserDetail';
-import { useUserSelection } from '../../controllers/useUserSelection';
 import { ErrorMessage } from '../common/ErrorMessage';
 import { Loading } from '../common/Loading';
 
@@ -13,12 +12,10 @@ export const UserDetailPage = (): JSX.Element => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isLoading, error } = useUserDetail(id);
-  const { clearSelection } = useUserSelection();
 
-  const handleBack = (): void => {
-    clearSelection();
-    navigate('/users');
-  };
+  // Al volver, `UserListPage` se monta de nuevo y su estado local empieza vacío:
+  // no hace falta "limpiar" ninguna selección.
+  const handleBack = (): void => navigate('/users');
 
   return (
     <div>

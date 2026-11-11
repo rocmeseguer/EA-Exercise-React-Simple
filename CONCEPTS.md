@@ -7,7 +7,7 @@
 
 0. [Arquitectura de capas del cliente](#0-arquitectura-de-capas-del-cliente)
 1. [Virtual DOM vs. DOM real](#1-virtual-dom-vs-dom-real)
-2. [TSX y componentes funcionales con funciones flecha (sin `React.FC`)](#2-tsx-y-componentes-funcionales-con-funciones-flecha-sin-reactfc)
+2. [TSX y componentes funcionales con funciones flecha](#2-tsx-y-componentes-funcionales-con-funciones-flecha)
 3. [Inmutabilidad de las props y flujo de datos unidireccional](#3-inmutabilidad-de-las-props-y-flujo-de-datos-unidireccional)
 4. [Estado local con `useState`](#4-estado-local-con-usestate)
 5. [Estado global con Context API + `useReducer`](#5-estado-global-con-context-api--usereducer)
@@ -27,9 +27,9 @@ src/
 ├── components/     # UI: qué se ve. No hace fetch ni contiene lógica de negocio.
 │   ├── common/     #   Loading, ErrorMessage (reutilizables)
 │   └── users/      #   UserList, UserListItem (presentacionales) + *Page (contenedores)
-├── context/        # Estado global: UserContext (Provider) + user.reducer (función pura)
-├── controllers/    # Custom Hooks: useUsers, useUserDetail, useUserSelection
-├── models/         # Tipos: user.model, api.model, user-state.model
+├── context/        # Estado global: CounterContext + counter.reducer, UserContext + user.reducer
+├── controllers/    # Custom Hooks: useCounter, useUsers, useUserDetail
+├── models/         # Tipos: user.model, api.model, user-state.model, counter-state.model
 ├── routes/         # AppRouter: mapa de rutas de la aplicación
 └── services/       # HTTP: http.service (fetch genérico), user.service (endpoints)
 ```
@@ -159,13 +159,10 @@ Es sobre todo una **convención de estilo** que da consistencia: componentes, ho
 `UserListPage` (padre) → `UserList` → `UserListItem` (hijo):
 
 ```tsx
-// UserListPage.tsx — el padre posee los datos y decide qué hacer al seleccionar
-const handleSelect = (user: User): void => {
-  selectUser(user); // 1) Actualiza el estado global
-  navigate(`/users/${user.id}`); // 2) Navega al detalle
-};
+// UserListPage.tsx — el padre posee el estado y le pasa al hijo el valor y el "setter"
+const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-<UserList users={users} selectedUserId={selectedUser?.id ?? null} onSelect={handleSelect} />
+<UserList users={users} selectedUserId={selectedUser?.id ?? null} onSelect={setSelectedUser} />
 ```
 
 ```tsx
@@ -200,7 +197,8 @@ Si alguien escribe `user.name = 'Otro'`, **TypeScript da error de compilación**
 
 - **Predecibilidad:** para saber de dónde viene un dato basta con subir por el árbol. No hay "efectos a distancia".
 - **Detección de cambios barata:** React (y `useMemo`, `React.memo`...) comparan por **referencia** (`===`). Si mutamos un objeto, la referencia no cambia y React *no se entera* de que debe re-renderizar. Creando objetos nuevos, el cambio es evidente.
-- **Componentes reutilizables:** `UserListItem` no sabe nada de rutas ni de contexto; se podría usar en cualquier otra vista.
+- **Componentes reutilizables:** `UserListItem` no sabe nada de rutas, de contexto ni de *dónde* vive la selección; se podría usar en cualquier otra vista.
+- **El hijo no decide:** `UserListItem` no llama a `setSelectedUser`; solo invoca `onSelect(user)`. Es el padre (`UserListPage`) quien decide que "seleccionar" significa actualizar su estado local.
 
 ---
 
@@ -212,15 +210,128 @@ Si alguien escribe `user.name = 'Otro'`, **TypeScript da error de compilación**
 
 ### Ejemplo en el proyecto
 
-`src/components/Home.tsx`:
+**Usuario seleccionado del listado** — `src/components/users/UserListPage.tsx`:
+
+```tsx
+export const UserListPage = (): JSX.Element => {
+  const navigate = useNavigate();
+  const { users, status, error, reload } = useUsers(); // lista: estado GLOBAL
+  const [selectedUser, setSelectedUser] = useState<User | null>(null); // selección: estado LOCAL
+
+  // ... (Cargando / Error)
+
+  return (
+    <div>
+      <UserList users={users} selectedUserId={selectedUser?.id ?? null} onSelect={setSelectedUser} />
+      {selectedUser && (
+        <div>
+          <p>Usuario seleccionado: {selectedUser.name}</p>
+          <button type="button" onClick={(): void => navigate(`/users/${selectedUser.id}`)}>
+            Ver detalle
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+Al pulsar un nombre se marca como seleccionado (y aparece *Usuario seleccionado: …*). Si navegamos a Home o al detalle y **volvemos al listado, no hay ningún usuario seleccionado**: el componente se ha desmontado y, al montarse de nuevo, `useState` arranca otra vez con su valor inicial (`null`).
+
+Fíjate en que la vista de detalle **no depende de la selección**: recibe el id por la URL (`/users/:id`). Por eso la selección puede ser efímera sin romper nada.
+
+También se usa estado local en `controllers/useUserDetail.ts` para la carga del detalle, que solo interesa a una vista:
+
+```ts
+const [fetchedUser, setFetchedUser] = useState<User | null>(null);
+const [isLoading, setIsLoading] = useState<boolean>(false);
+const [error, setError] = useState<string | null>(null);
+```
+
+### ¿Por qué?
+
+- **Encapsulación:** la selección solo le importa a `UserListPage`. Llevarla al estado global añadiría acoplamiento, re-renders innecesarios en otros componentes y la obligación de "limpiarla" a mano (antes existía una acción `clear_user` solo para eso).
+- **El ciclo de vida hace el trabajo:** el estado local nace con el componente (*mount*) y muere con él (*unmount*). Si el requisito es "al volver no hay nada seleccionado", el estado local lo cumple **sin escribir ni una línea extra**.
+- **Pasar el *setter* directamente** (`onSelect={setSelectedUser}`) es válido porque su firma `(user: User) => void` encaja con la prop; React garantiza que `setSelectedUser` es estable entre renders.
+- **Actualización funcional:** cuando el nuevo valor depende del anterior, usa `setX(prev => ...)` en lugar de `setX(x + 1)`. Si se llama dos veces en el mismo evento, la segunda forma leería dos veces el mismo valor "antiguo".
+- **Regla práctica:** *empieza siempre con estado local* y súbelo (al padre o al contexto) solo cuando otro componente lo necesite **o cuando deba sobrevivir al desmontaje** del componente (ver el contador en la sección 5).
+
+---
+
+## 5. Estado global con Context API + `useReducer`
+
+### Definición
+
+- **`useReducer`** gestiona estado mediante un **reducer**: una función **pura** `(estado, acción) => nuevoEstado`. Los componentes no modifican el estado: **despachan acciones** (`dispatch({ type: ... })`) que describen *qué ha pasado*.
+- **Context API** permite que un valor (aquí, `state` y `dispatch`) esté disponible para **todo un subárbol** sin pasarlo por props nivel a nivel (*prop drilling*).
+- Combinados forman un **patrón tipo Redux, nativo de React**, sin librerías externas.
+
+El proyecto tiene **dos estados globales**, cada uno en su propio contexto:
+
+| Contexto | Qué guarda | Por qué es global |
+| --- | --- | --- |
+| `CounterContext` | `count` del Home | Debe **conservar su valor** aunque `Home` se desmonte al navegar. |
+| `UserContext` | `users`, `status`, `error` | La lista se descarga **una vez** y se reutiliza en `/users` y `/users/:id`. |
+
+### Ejemplo 1: el contador (`CounterContext`)
+
+**1. Tipos** (`src/models/counter-state.model.ts`):
+
+```ts
+export interface CounterState {
+  readonly count: number;
+}
+
+export type CounterAction = { type: 'increment' };
+```
+
+**2. Reducer puro** (`src/context/counter.reducer.ts`):
+
+```ts
+export const counterReducer = (state: CounterState, action: CounterAction): CounterState => {
+  switch (action.type) {
+    case 'increment':
+      return { ...state, count: state.count + 1 };
+    default: {
+      const unhandled: never = action.type; // comprobación exhaustiva
+      return unhandled;
+    }
+  }
+};
+```
+
+**3. Provider** (`src/context/CounterContext.tsx`):
+
+```tsx
+export const CounterProvider = ({ children }: CounterProviderProps): JSX.Element => {
+  const [state, dispatch] = useReducer(counterReducer, initialCounterState);
+
+  const value: CounterContextValue = useMemo(
+    (): CounterContextValue => ({ state, dispatch }),
+    [state],
+  );
+
+  return <CounterContext.Provider value={value}>{children}</CounterContext.Provider>;
+};
+```
+
+**4. Controller** (`src/controllers/useCounter.ts`): oculta el contexto y las acciones al componente.
+
+```ts
+export const useCounter = (): UseCounterResult => {
+  const { state, dispatch } = useCounterContext();
+
+  const increment = useCallback((): void => dispatch({ type: 'increment' }), [dispatch]);
+
+  return { count: state.count, increment };
+};
+```
+
+**5. Componente** (`src/components/Home.tsx`): no sabe que el estado es global.
 
 ```tsx
 export const Home = (): JSX.Element => {
-  const [count, setCount] = useState<number>(0);
-
-  // Actualización funcional: `prev => prev + 1` garantiza partir del valor más
-  // reciente aunque React agrupe (batch) varias actualizaciones seguidas.
-  const increment = (): void => setCount((prev: number): number => prev + 1);
+  const { count, increment } = useCounter();
 
   return (
     <div>
@@ -234,31 +345,11 @@ export const Home = (): JSX.Element => {
 };
 ```
 
-También se usa en `controllers/useUserDetail.ts` para el estado de carga del detalle, que solo interesa a una vista:
+Incrementa el contador, ve a *Users* y vuelve a *Home*: **el valor se mantiene**. `Home` se ha desmontado y vuelto a montar, pero `count` no vivía en `Home`, sino en `CounterProvider`, que está en la raíz y nunca se desmonta.
 
-```ts
-const [fetchedUser, setFetchedUser] = useState<User | null>(null);
-const [isLoading, setIsLoading] = useState<boolean>(false);
-const [error, setError] = useState<string | null>(null);
-```
+> **Comparación directa:** si `Home` usara `const [count, setCount] = useState(0)`, al volver a la página el contador valdría otra vez `0`. Cambiar *dónde vive* el estado cambia *cuánto dura*.
 
-### ¿Por qué?
-
-- **Encapsulación:** el contador no le importa a nadie más; llevarlo al estado global solo añadiría acoplamiento y re-renders innecesarios.
-- **Actualización funcional** (`setCount(prev => prev + 1)`): si hiciéramos `setCount(count + 1)` dos veces seguidas en el mismo evento, ambas leerían el mismo `count` "antiguo" y solo sumaría 1. La forma funcional siempre parte del último valor.
-- **Regla práctica:** *empieza siempre con estado local* y súbelo (al padre o al contexto) solo cuando otro componente lo necesite.
-
----
-
-## 5. Estado global con Context API + `useReducer`
-
-### Definición
-
-- **`useReducer`** gestiona estado mediante un **reducer**: una función **pura** `(estado, acción) => nuevoEstado`. Los componentes no modifican el estado: **despachan acciones** (`dispatch({ type: ... })`) que describen *qué ha pasado*.
-- **Context API** permite que un valor (aquí, `state` y `dispatch`) esté disponible para **todo un subárbol** sin pasarlo por props nivel a nivel (*prop drilling*).
-- Combinados forman un **patrón tipo Redux, nativo de React**, sin librerías externas.
-
-### Ejemplo en el proyecto
+### Ejemplo 2: los usuarios (`UserContext`)
 
 **1. Tipos del estado y de las acciones** (`src/models/user-state.model.ts`):
 
@@ -267,18 +358,15 @@ export interface UserState {
   readonly users: readonly User[];
   readonly status: RequestStatus;
   readonly error: string | null;
-  readonly selectedUser: User | null;
 }
 
 export type UserAction =
   | { type: 'fetch_users_start' }
   | { type: 'fetch_users_success'; payload: readonly User[] }
-  | { type: 'fetch_users_error'; payload: string }
-  | { type: 'select_user'; payload: User }
-  | { type: 'clear_user' };
+  | { type: 'fetch_users_error'; payload: string };
 ```
 
-`UserAction` es una **unión discriminada**: según el valor de `type`, TypeScript sabe si hay `payload` y de qué tipo.
+`UserAction` es una **unión discriminada**: según el valor de `type`, TypeScript sabe si hay `payload` y de qué tipo. Observa que **el usuario seleccionado no está aquí**: es estado local de `UserListPage` (sección 4).
 
 **2. Reducer puro** (`src/context/user.reducer.ts`):
 
@@ -291,10 +379,6 @@ export const userReducer = (state: UserState, action: UserAction): UserState => 
       return { ...state, status: 'success', users: action.payload };
     case 'fetch_users_error':
       return { ...state, status: 'error', error: action.payload };
-    case 'select_user':
-      return { ...state, selectedUser: action.payload };
-    case 'clear_user':
-      return { ...state, selectedUser: null };
     default: {
       const unhandled: never = action; // comprobación exhaustiva
       return unhandled;
@@ -328,24 +412,21 @@ export const useUserContext = (): UserContextValue => {
 };
 ```
 
-**4. Composición en la raíz** (`src/App.tsx`):
+**4. Uso desde un controller**: `useUsers` despacha las acciones de carga (ver sección 6).
+
+### Composición en la raíz (`src/App.tsx`)
 
 ```tsx
 export const App = (): JSX.Element => (
-  <UserProvider>
-    <AppRouter />
-  </UserProvider>
+  <CounterProvider>
+    <UserProvider>
+      <AppRouter />
+    </UserProvider>
+  </CounterProvider>
 );
 ```
 
-**5. Uso desde un controller** (`src/controllers/useUserSelection.ts`):
-
-```ts
-const selectUser = useCallback(
-  (user: User): void => dispatch({ type: 'select_user', payload: user }),
-  [dispatch],
-);
-```
+Los Providers envuelven al router: como están **por encima** de todas las rutas, su estado sobrevive a cualquier navegación.
 
 ### ¿Por qué?
 
@@ -358,8 +439,23 @@ const selectUser = useCallback(
 | `createContext<... \| undefined>(undefined)` + `useUserContext` | Error claro si se usa fuera del Provider y el tipo de retorno nunca es `undefined`. |
 | `useMemo` sobre `value` | Evita re-renderizar todos los consumidores cuando el Provider se renderiza sin cambios de estado. |
 | Los componentes usan **hooks controller**, no `dispatch` directamente | Los componentes no conocen los nombres de las acciones; se pueden renombrar sin tocar la UI. |
+| **Un contexto por dominio** (contador / usuarios) | Responsabilidad única y menos re-renders: pulsar *Increment* no re-renderiza a los consumidores de `UserContext`. |
 
-**¿Cuándo usar estado global?** Cuando varias vistas necesitan los mismos datos: aquí la lista de usuarios cargada en `/users` se **reutiliza** en `/users/:id` sin repetir la petición, y el usuario seleccionado sobrevive a la navegación.
+**¿Cuándo usar estado global?**
+
+- Cuando **varias vistas** necesitan los mismos datos (la lista de usuarios se reutiliza en `/users/:id` sin repetir la petición).
+- Cuando el dato debe **sobrevivir al desmontaje** del componente que lo usa (el contador de Home).
+
+### Local vs. global: qué ocurre al navegar
+
+| Acción del usuario | `count` (global) | `selectedUser` (local) |
+| --- | --- | --- |
+| Pulsa *Increment* dos veces / selecciona a Bob | `2` | `Bob` |
+| Navega a otra ruta | `Home` se desmonta, pero el valor sigue en `CounterProvider` | `UserListPage` se desmonta y **su estado se destruye** |
+| Vuelve a la ruta original | Se muestra `2` | `null` → *sin selección* |
+| Recarga la página (F5) | `0` (el estado en memoria se pierde) | `null` |
+
+> La última fila es importante: Context **no es persistencia**. Para sobrevivir a una recarga habría que guardar el dato en `localStorage` o en el backend.
 
 ---
 
@@ -435,7 +531,7 @@ const { user, isLoading, error } = useUserDetail(id);
 - **Dependencias honestas:** listamos en el array todo lo que el efecto lee (`userId`, `cachedUser`). `useCallback` estabiliza `loadUsers` para que pueda ser dependencia sin provocar bucles infinitos.
 - **Limpieza y *race conditions*:** si el usuario navega de `/users/1` a `/users/2` antes de que llegue la primera respuesta, la limpieza aborta la petición antigua. Sin ella, una respuesta lenta podría "pisar" a la nueva.
 - **Estado derivado, no duplicado:** `cachedUser` se *calcula* a partir del estado global con `useMemo`; no se copia a otro `useState`. Una sola fuente de verdad.
-- **Composición de hooks:** `useUsers` reutiliza `useUserSelection`. `UserDetailPage` usa solo `useUserSelection`, así que **no** dispara la descarga del listado como efecto colateral.
+- **Hooks con una sola responsabilidad:** `UserDetailPage` usa solo `useUserDetail`; **no** llama a `useUsers`, así que no dispara la descarga del listado como efecto colateral.
 - **¿Por qué no se cancela `loadUsers` al desmontar?** Porque su resultado se guarda en el Provider (que vive en la raíz y nunca se desmonta), no en el componente. Si se cancelase, al salir y volver rápido a `/users` se perdería una petición ya en curso.
 
 ---
@@ -573,17 +669,19 @@ export const UserList = ({ users, selectedUserId, onSelect }: UserListProps): JS
 
 ## 9. Resumen del flujo de datos
 
-**Estado local** (Home, detalle):
+**Estado local** (usuario seleccionado, carga del detalle):
 
 ```text
 Evento (click) → setState(...) → re-render del componente
+(se reinicia cada vez que el componente se monta)
 ```
 
-**Estado global** (listado y selección):
+**Estado global** (contador, lista de usuarios):
 
 ```text
-Componente → controller (useUsers) → dispatch(acción) → reducer (puro)
+Componente → controller (useCounter / useUsers) → dispatch(acción) → reducer (puro)
           → nuevo estado en el Provider → re-render de los componentes suscritos
+(sobrevive a la navegación porque el Provider está en la raíz)
 ```
 
 **Petición HTTP completa** (entrar en `/users`):
@@ -602,7 +700,7 @@ UserListPage monta
 - [x] Componentes como funciones flecha con props tipadas; sin `React.FC`.
 - [x] Cero `any`; retornos explícitos; tipos de dominio en `src/models/`.
 - [x] Estado nunca mutado: spread, `map`, `find`, `readonly`.
-- [x] `useState` para estado efímero; Context + `useReducer` para estado compartido.
+- [x] `useState` para estado efímero (selección); Context + `useReducer` para estado compartido o persistente entre vistas (contador, usuarios).
 - [x] Peticiones aisladas en `services/`, orquestadas desde Custom Hooks en `controllers/`.
 - [x] `try`/`catch`/`finally`, `AbortController`, timeout y validación de respuestas.
 - [x] Estados de Cargando, Éxito y Error visibles en la UI.
