@@ -1,34 +1,36 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { User } from '../../types/user';
-import { useUserContext } from '../../context/UserContext';
+import { User } from '../../models/user.model';
+import { UserListItem } from './UserListItem';
 
-export function UserList(): JSX.Element {
-  const navigate = useNavigate();
-  const users: User[] = [
-    { id: 1, name: "Alice" },
-    { id: 2, name: "Bob" }
-  ];
+interface UserListProps {
+  users: readonly User[];
+  selectedUserId: number | null;
+  onSelect: (user: User) => void;
+}
 
-  const { state, dispatch } = useUserContext();
+/**
+ * Lista presentacional: transforma datos en elementos con `map` (función pura).
+ *
+ * La `key` debe ser un identificador ESTABLE y ÚNICO (el id de la BD), nunca el
+ * índice del array: así React sabe qué elemento es cuál entre renders y puede
+ * reordenar/insertar/eliminar nodos del DOM de forma mínima y correcta.
+ */
+export const UserList = ({ users, selectedUserId, onSelect }: UserListProps): JSX.Element => {
+  if (users.length === 0) {
+    return <p>No hay usuarios registrados.</p>;
+  }
 
   return (
-    <div>
-      <ul>
-        {users.map((user) => (
-          <li key={user.id}>
-            <button
-              onClick={() => {
-                dispatch({ type: "select_user", payload: user });
-                navigate(`/users/${user.id}`);
-              }}
-            >
-              {user.name}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {state.selectedUser && <p>Usuario seleccionado: {state.selectedUser.name}</p>}
-    </div>
+    <ul>
+      {users.map(
+        (user: User): JSX.Element => (
+          <UserListItem
+            key={user.id}
+            user={user}
+            isSelected={user.id === selectedUserId}
+            onSelect={onSelect}
+          />
+        ),
+      )}
+    </ul>
   );
-}
+};

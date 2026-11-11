@@ -1,17 +1,18 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 
-export function NavBar(): JSX.Element {
-  return (
-    <nav>
-      <ul>
-        <li>
-          <Link to="/">Home</Link>
-        </li>
-        <li>
-          <Link to="/users">Users</Link>
-        </li>
-      </ul>
-    </nav>
-  );
-}
+/**
+ * Barra de navegación. `Link` cambia la URL SIN recargar la página
+ * (navegación del lado del cliente, típica de una SPA).
+ */
+export const NavBar = (): JSX.Element => (
+  <nav>
+    <ul>
+      <li>
+        <Link to="/">Home</Link>
+      </li>
+      <li>
+        <Link to="/users">Users</Link>
+      </li>
+    </ul>
+  </nav>
+);

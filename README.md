@@ -1,81 +1,55 @@
 # Gestión de Estado en React Exercise Simple
 
-Este proyecto demuestra dos tipos de gestión de estado en React:
+Frontend en **React + TypeScript** que consume la API REST de usuarios (Express).
+Demuestra los dos tipos de gestión de estado en React y una arquitectura de capas limpia.
 
-## 1. Estado Local (useState)
+> 📘 La explicación teórica de cada concepto, con ejemplos del propio código, está en **[CONCEPTS.md](./CONCEPTS.md)**.
 
-El estado local se gestiona usando el hook `useState` de React, ideal para estado específico de componentes.
+## Puesta en marcha
 
-### Ejemplo en Home.tsx:
-```typescript
-const [count, setCount] = useState<number>(0);
-```
-- Usado para un contador simple
-- Estado encapsulado dentro del componente
-- No accesible por otros componentes
-
-## 2. Estado Global (Context + useReducer)
-
-El estado global se implementa combinando Context API y useReducer.
-
-### Estructura:
-
-1. **Tipos** (`types/user.ts`):
-```typescript
-export interface User {
-  id: number;
-  name: string;
-}
-
-export interface State {
-  selectedUser: User | null;
-}
-
-export type Action =
-  | { type: "select_user"; payload: User }
-  | { type: "clear_user" };
+```bash
+npm install
+npm start            # http://localhost:3000 (abre otro puerto si la API ya usa el 3000)
 ```
 
-2. **Contexto** (`context/UserContext.tsx`):
-- Implementa el patrón reducer para manejar actualizaciones de estado
-- Proporciona un Provider que envuelve la aplicación
-- Define acciones específicas para modificar el estado
+Por defecto la app usa **datos simulados**, así que funciona sin backend.
+Para conectarla a tu API de Express:
 
-### Acciones disponibles:
-- `select_user`: Selecciona un usuario
-- `clear_user`: Limpia el usuario seleccionado
-
-### Uso en componentes:
-
-1. **Acceder al estado global**:
-```typescript
-const { state, dispatch } = useUserContext();
+```bash
+cp .env.example .env.local
+# edita REACT_APP_API_URL, p. ej. http://localhost:3000/api
 ```
 
-2. **Despachar acciones**:
-```typescript
-dispatch({ type: "select_user", payload: user });
+La API debe exponer `GET /users` → `User[]` y `GET /users/:id` → `User`, con `User = { id: number; name: string }`.
+
+## Estructura
+
+```text
+src/
+├── components/     # UI (presentacionales y contenedores *Page)
+├── context/        # UserContext (Provider) + user.reducer (función pura)
+├── controllers/    # Custom Hooks: useUsers, useUserDetail, useUserSelection
+├── models/         # Tipos: user.model, api.model, user-state.model
+├── routes/         # AppRouter (mapa de rutas)
+└── services/       # http.service (fetch genérico) + user.service (endpoints)
 ```
 
-## Flujo de Datos
+## Los dos tipos de estado
 
-1. **Estado Local**:
-   - Componente → useState → Actualización → Re-render del componente
+| | Estado local (`useState`) | Estado global (Context + `useReducer`) |
+| --- | --- | --- |
+| Ejemplo | Contador de `Home.tsx`, carga del detalle en `useUserDetail.ts` | Lista de usuarios y usuario seleccionado (`UserContext.tsx`) |
+| Alcance | Un solo componente | Cualquier componente dentro de `<UserProvider>` |
+| Flujo | Componente → `setState` → re-render | Componente → controller → `dispatch(acción)` → reducer → Context → re-render |
 
-2. **Estado Global**:
-   - Componente → dispatch(action) → reducer → Context → Re-render de componentes suscritos
+### Acciones del estado global
 
-## Beneficios de esta Arquitectura
+- `fetch_users_start` / `fetch_users_success` / `fetch_users_error`: ciclo de vida de `GET /users`.
+- `select_user`: selecciona un usuario.
+- `clear_user`: limpia el usuario seleccionado.
 
-1. **Separación de Responsabilidades**:
-   - Estado local para lógica de componentes
-   - Estado global para datos compartidos
+## Scripts
 
-2. **Mantenibilidad**:
-   - Acciones tipadas
-   - Flujo de datos predecible
-   - Fácil de debuggear
-
-3. **Escalabilidad**:
-   - Fácil de extender con nuevas acciones
-   - Patrón consistente en toda la aplicación
+- `npm start`: servidor de desarrollo.
+- `npm run build`: build de producción.
+- `npx tsc --noEmit`: comprobación de tipos.
